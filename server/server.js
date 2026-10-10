@@ -1,3 +1,4 @@
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -6,36 +7,47 @@ import "dotenv/config";
 const app = express();
 const { Pool } = pg;
 
+// PostgreSQL connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes("localhost")
+    ? false
+    : { rejectUnauthorized: false },
 });
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  process.env.FRONTEND_URL,
-].filter(Boolean);
-
+// Allowed frontend URLs — declare only once
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
   "https://e-karya-admin-user-final.vercel.app",
-];
+  process.env.FRONTEND_URL,
+].filter(Boolean);
 
+// CORS configuration
 app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        console.error("Blocked by CORS:", origin);
-        callback(new Error("Not allowed by CORS"));
+        return callback(null, true);
       }
+
+      console.error("Blocked by CORS:", origin);
+      return callback(new Error("Not allowed by CORS"));
     },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-role",
+      "x-user-id",
+    ],
+    credentials: true,
   })
 );
 
-// Convert PostgreSQL user columns to the format used by the frontend
+app.use(express.json());
+
+// Convert database user to frontend format
 function formatUser(user) {
   return {
     id: user.id,
@@ -48,7 +60,7 @@ function formatUser(user) {
   };
 }
 
-// Convert PostgreSQL task columns to the format used by the frontend
+// Convert database task to frontend format
 function formatTask(task) {
   return {
     id: task.id,
@@ -63,7 +75,7 @@ function formatTask(task) {
   };
 }
 
-// Admin access middleware
+// Admin middleware
 function admin(req, res, next) {
   if (req.headers["x-role"] !== "ADMIN") {
     return res.status(403).json({
@@ -98,6 +110,12 @@ app.post("/api/login", async (req, res) => {
   try {
     const { email, password, role } = req.body;
 
+    if (!email || !password || !role) {
+      return res.status(400).json({
+        message: "Email, password and role are required",
+      });
+    }
+
     const result = await pool.query(
       `SELECT id, employee_id, name, email, password,
               role, department, designation
@@ -106,7 +124,7 @@ app.post("/api/login", async (req, res) => {
          AND password = $2
          AND role = $3
        LIMIT 1`,
-      [email || "", password || "", role || ""]
+      [email.trim(), password, role]
     );
 
     if (result.rows.length === 0) {
@@ -127,7 +145,7 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// Get all employees (Admin only)
+// Get employees (Admin only)
 app.get("/api/users", admin, async (req, res) => {
   try {
     const result = await pool.query(
@@ -167,11 +185,12 @@ app.post("/api/users", admin, async (req, res) => {
     }
 
     const existing = await pool.query(
-      `SELECT id FROM users
+      `SELECT id
+       FROM users
        WHERE LOWER(email) = LOWER($1)
           OR employee_id = $2
        LIMIT 1`,
-      [email, employeeId]
+      [email.trim(), employeeId]
     );
 
     if (existing.rows.length > 0) {
@@ -180,21 +199,22 @@ app.post("/api/users", admin, async (req, res) => {
       });
     }
 
-    // Generate an ID larger than existing migrated IDs
     const idResult = await pool.query(
       "SELECT COALESCE(MAX(id), 0) + 1 AS id FROM users"
     );
 
     const result = await pool.query(
       `INSERT INTO users
-       (id, employee_id, name, email, password, role, department, designation)
+       (id, employee_id, name, email, password, role,
+        department, designation)
        VALUES ($1, $2, $3, $4, $5, 'USER', $6, $7)
-       RETURNING id, employee_id, name, email, role, department, designation`,
+       RETURNING id, employee_id, name, email, role,
+                 department, designation`,
       [
         idResult.rows[0].id,
         employeeId,
         name,
-        email,
+        email.trim(),
         password,
         department || "General",
         designation || "Employee",
@@ -221,7 +241,8 @@ app.get("/api/tasks", async (req, res) => {
 
     if (role === "ADMIN") {
       result = await pool.query(
-        `SELECT id, assigned_to AS "userId",
+        `SELECT id,
+                assigned_to AS "userId",
                 employee_id AS "employeeId",
                 employee_name AS "employeeName",
                 title, description, priority, deadline, status
@@ -236,7 +257,8 @@ app.get("/api/tasks", async (req, res) => {
       }
 
       result = await pool.query(
-        `SELECT id, assigned_to AS "userId",
+        `SELECT id,
+                assigned_to AS "userId",
                 employee_id AS "employeeId",
                 employee_name AS "employeeName",
                 title, description, priority, deadline, status
@@ -257,7 +279,7 @@ app.get("/api/tasks", async (req, res) => {
   }
 });
 
-// Create and assign a task (Admin only)
+// Create and assign task (Admin only)
 app.post("/api/tasks", admin, async (req, res) => {
   try {
     const {
@@ -274,7 +296,7 @@ app.post("/api/tasks", admin, async (req, res) => {
       });
     }
 
-    if (!title) {
+    if (!title || !title.trim()) {
       return res.status(400).json({
         message: "Task title is required",
       });
@@ -304,7 +326,8 @@ app.post("/api/tasks", admin, async (req, res) => {
        (id, assigned_to, employee_id, employee_name,
         title, description, priority, deadline, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending')
-       RETURNING id, assigned_to AS "userId",
+       RETURNING id,
+                 assigned_to AS "userId",
                  employee_id AS "employeeId",
                  employee_name AS "employeeName",
                  title, description, priority, deadline, status`,
@@ -313,7 +336,7 @@ app.post("/api/tasks", admin, async (req, res) => {
         employee.id,
         employee.employee_id,
         employee.name,
-        title,
+        title.trim(),
         description || "",
         priority || "Medium",
         deadline || null,
@@ -350,18 +373,26 @@ app.patch("/api/tasks/:id/status", async (req, res) => {
         `UPDATE tasks
          SET status = $1
          WHERE id = $2
-         RETURNING id, assigned_to AS "userId",
+         RETURNING id,
+                   assigned_to AS "userId",
                    employee_id AS "employeeId",
                    employee_name AS "employeeName",
                    title, description, priority, deadline, status`,
         [status, req.params.id]
       );
     } else {
+      if (!userId) {
+        return res.status(401).json({
+          message: "User ID is required",
+        });
+      }
+
       result = await pool.query(
         `UPDATE tasks
          SET status = $1
          WHERE id = $2 AND assigned_to = $3
-         RETURNING id, assigned_to AS "userId",
+         RETURNING id,
+                   assigned_to AS "userId",
                    employee_id AS "employeeId",
                    employee_name AS "employeeName",
                    title, description, priority, deadline, status`,
@@ -383,6 +414,21 @@ app.patch("/api/tasks/:id/status", async (req, res) => {
       message: "Could not update task",
     });
   }
+});
+
+// CORS and general error handler
+app.use((error, req, res, next) => {
+  if (error.message === "Not allowed by CORS") {
+    return res.status(403).json({
+      message: "Origin not allowed by CORS",
+    });
+  }
+
+  console.error("Server error:", error.message);
+
+  res.status(500).json({
+    message: "Internal server error",
+  });
 });
 
 // Start server
