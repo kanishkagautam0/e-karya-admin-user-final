@@ -15,15 +15,16 @@ const pool = new Pool({
     : { rejectUnauthorized: false },
 });
 
-// Allowed frontend URLs — declare only once
+// Allowed frontend URLs
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
   "https://e-karya-admin-user-final.vercel.app",
+  "https://e-karya-admin-user-final-i2k5vii1m-git-lost1.vercel.app",
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
-// CORS configuration
+// CORS configuration — keep this before all routes
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -106,7 +107,7 @@ app.get("/api/health", async (req, res) => {
 });
 
 // Login
-app.post("/api/login", async (req, res) => {
+app.post(["/login", "/api/login"], async (req, res) => {
   try {
     const { email, password, role } = req.body;
 
@@ -213,7 +214,7 @@ app.post("/api/users", admin, async (req, res) => {
       [
         idResult.rows[0].id,
         employeeId,
-        name,
+        name.trim(),
         email.trim(),
         password,
         department || "General",
@@ -348,7 +349,7 @@ app.post("/api/tasks", admin, async (req, res) => {
     console.error("Create task error:", error.message);
 
     res.status(500).json({
-      message: "Could not create task",
+      message: "Could not create employee task",
     });
   }
 });
@@ -416,7 +417,7 @@ app.patch("/api/tasks/:id/status", async (req, res) => {
   }
 });
 
-// CORS and general error handler
+// General error handler
 app.use((error, req, res, next) => {
   if (error.message === "Not allowed by CORS") {
     return res.status(403).json({
