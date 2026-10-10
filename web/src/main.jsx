@@ -4,7 +4,10 @@ import { createRoot } from "react-dom/client";
 import "./style.css";
 
 const API =
-  import.meta.env.VITE_BACKEND_URL || "https://e-karya-admin-user-api-new.onrender.com";
+  (import.meta.env.VITE_BACKEND_URL ||
+    "https://e-karya-admin-user-api-new.onrender.com")
+    .replace(/\/+$/, "")
+    .replace(/\/api$/, "") + "/api";
 
 const getUser = () =>
   JSON.parse(localStorage.getItem("ekUser") || "null");
