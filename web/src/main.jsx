@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import "./style.css";
 
 const API =
-  import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/api";
+  import.meta.env.VITE_BACKEND_URL || "https://e-karya-admin-user-api-new.onrender.com";
 
 const getUser = () =>
   JSON.parse(localStorage.getItem("ekUser") || "null");
