@@ -21,6 +21,7 @@ const allowedOrigins = [
   "http://localhost:5174",
   "https://e-karya-admin-user-final.vercel.app",
   "https://e-karya-admin-user-final-i2k5vii1m-git-lost1.vercel.app",
+  "https://e-karya-admin-user-final-951o61t00-git-lost1.vercel.app",
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
